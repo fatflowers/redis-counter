@@ -116,7 +116,7 @@ sds rdbLoadIntegerObject(FILE *fp, int enctype, int encode) {
         val = (int32_t)v;
     } else {
         val = 0; /* anti-warning */
-        fprintf(stderr, "Unknown RDB integer encoding type");
+        fprintf(stderr, "Unknown RDB integer encoding type\n");
         exit(1);
         return NULL;
     }
@@ -160,7 +160,7 @@ sds rdbGenericLoadStringObject(FILE*fp, int encode) {
             case REDIS_RDB_ENC_LZF:
                 return rdbLoadLzfStringObject(fp);
             default:
-                fprintf(stderr, "Unknown RDB encoding type");
+                fprintf(stderr, "Unknown RDB encoding type\n");
                 return NULL;
         }
     }
@@ -190,7 +190,7 @@ int rdbLoadDoubleValue(FILE *fp, double *val) {
 
     if (fread(&len,1,1,fp) == 0) return -1;
     if(len > 252){
-        fprintf(stderr, "wrong number in rdbLoadDoubleValue");
+        fprintf(stderr, "wrong number in rdbLoadDoubleValue\n");
         return 0;
     }
     if (fread(buf,len,1,fp) == 0) return -1;
@@ -228,7 +228,7 @@ int init_rdb_state(rdb_state * state, FILE * fp){
     buf[9] = '\0';
     if (memcmp(buf,"REDIS",5) != 0) {
         fclose(fp);
-        fprintf(stderr,"Wrong signature trying to load DB from file");
+        fprintf(stderr,"Wrong signature trying to load DB from file\n");
         return COUNTER_ERR;
     }
     /*-------redis version check-------*/
@@ -236,21 +236,21 @@ int init_rdb_state(rdb_state * state, FILE * fp){
     if (rdbver >= 2 && rdbver <= 4) {
         if (!(sdstemp = rdbLoadStringObject(fp)) || rdbLoadDoubleValue(fp, (double *)&(state->offset))) {
             fclose(fp);
-            fprintf(stderr, "Failed to get aof name or offset");
+            fprintf(stderr, "Failed to get aof name or offset\n");
             return COUNTER_ERR;
         }
         char aofname[255];
         sprintf(aofname, "%s", sdstemp);
         state->rdb_filename = strdup(aofname);
-        fprintf(stdout, "RDB position: %s-%lld",
+        fprintf(stdout, "RDB position: %s-%lld\n",
                     state->rdb_filename, state->offset);
     } else if (rdbver != 1) {
         fclose(fp);
-        fprintf(stderr, "Can't handle RDB format version %d",rdbver);
+        fprintf(stderr, "Can't handle RDB format version %d\n",rdbver);
         return COUNTER_ERR;
     }
 
-    fprintf(stdout, "Loading dict information...");
+    fprintf(stdout, "Loading dict information...\n");
     /* load db size, used, deleted_slots, key_size, entry_size */
     if (rdbLoadDoubleValue(fp, &val) == -1) goto eoferr;
     state->size = (unsigned long)val;
@@ -263,7 +263,7 @@ int init_rdb_state(rdb_state * state, FILE * fp){
     if (rdbLoadDoubleValue(fp, &val) == -1) goto eoferr;
     state->entry_size = (unsigned int)val;
     fprintf(stdout,  "RDB info: size-%lld, used-%lld, deleted-%lld, key-size-%lld, "
-                "entry-size-%lld", state->size, state->used, state->deleted, state->key_size, state->entry_size);
+                "entry-size-%lld\n", state->size, state->used, state->deleted, state->key_size, state->entry_size);
     state->value_size = state->entry_size - state->key_size;
 
     // check if values are valid
@@ -273,9 +273,9 @@ int init_rdb_state(rdb_state * state, FILE * fp){
         state->key_size < 1)
     {
         fprintf(stderr, "Invalid values got from RDB: size-%lld, "
-                "used-%lld, deleted-%lld, key_size-%lld",
+                "used-%lld, deleted-%lld, key_size-%lld\n",
                 state->size, state->used, state->deleted, state->key_size);
-        fprintf(stderr, "Error loading from DB. Aborting now.");
+        fprintf(stderr, "Error loading from DB. Aborting now.\n");
         exit(1);
         return COUNTER_ERR;
     }
@@ -284,7 +284,7 @@ int init_rdb_state(rdb_state * state, FILE * fp){
     return COUNTER_OK;
 eoferr:
     sdsfree(sdstemp);
-    fprintf(stderr, "init_rdb_state failed");
+    fprintf(stderr, "init_rdb_state failed\n");
     return COUNTER_ERR;
 }
 
@@ -307,10 +307,34 @@ int _key_hash(char * key, int value){
 rdb_state state;
 
 void adjust_block_size(long long entry_size){
-    fprintf(stdout, "REDISCOUNTER_RDB_BLOCK=%lld", REDISCOUNTER_RDB_BLOCK);
+    fprintf(stdout, "REDISCOUNTER_RDB_BLOCK=%lld\n", REDISCOUNTER_RDB_BLOCK);
     REDISCOUNTER_RDB_BLOCK = entry_size * ((REDISCOUNTER_RDB_BLOCK + entry_size - 1) / entry_size);
-    fprintf(stdout, "REDISCOUNTER_RDB_BLOCK=%lld", REDISCOUNTER_RDB_BLOCK);
+    fprintf(stdout, "REDISCOUNTER_RDB_BLOCK=%lld\n", REDISCOUNTER_RDB_BLOCK);
 }
+
+int rdbLoad(char *filename){
+    if(!filename){
+        fprintf(stderr, "Invalid filename\n");
+        return COUNTER_ERR;
+    }
+    FILE * fp;
+
+
+    fp = fopen(filename,"r");
+    if (!fp) {
+        fprintf(stderr, "Error opening %s for loading: %s\n",
+            filename, strerror(errno));
+        return COUNTER_ERR;
+    }
+
+    rdb_state state;
+    init_rdb_state(&state, fp);
+
+    fclose(fp);
+    fp = NULL;
+    return COUNTER_OK;
+}
+
 /*
 void rdb_get_dict(){
     adjust_block_size(state.entry_size);

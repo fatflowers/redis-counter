@@ -7,6 +7,7 @@
 #include <arpa/inet.h> // for ntohl
 #include <limits.h>
 #include <math.h>
+#include <errno.h>
 #include "sds.h"
 #include "zmalloc.h"
 
