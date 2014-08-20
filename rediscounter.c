@@ -1,49 +1,73 @@
 #include "rediscounter.h"
 
 /* Aof class sunlei*/
-long long REDISCOUNTER_RDB_BLOCK = 10240;
 typedef struct Aof{
     int index;
     char *filename;
     sds buffer;
 }Aof;
 
-void init_aof(Aof * aof_obj, int index, char *filename){
+int init_aof(Aof * aof_obj, int index, char *filename){
     aof_obj->index = index;
-    if((aof_obj->filename = (char *)malloc(sizeof(char) * (strlen(filename) + 1))) == NULL)
+    aof_obj->filename = strdup(filename);
+    if(!filename)
         goto err;
-    strcpy(aof_obj->filename, filename);
     if((aof_obj->buffer = sdsnewlen(NULL, AOF_BUFFER_SIZE)) == NULL)
         goto err;
-
+    return COUNTER_OK;
 err:
     free(aof_obj->filename);
     sdsfree(aof_obj->buffer);
+    fprintf(stderr, "init_aof filename: %s error: %s\n",
+            filename, strerror(errno));
+    return COUNTER_ERR;
 }
 
 //time_used function to be added
 int save_aof(Aof * aof_obj){
     if(aof_obj->buffer)
-        return 0;
+        return COUNTER_OK;
     FILE *fp;
     if((fp = fopen(aof_obj->filename, "ab+")) == NULL)
         goto err;
     if(fwrite(aof_obj->buffer, strlen(aof_obj->buffer), 1, fp) != 1)
         goto err;
-    return 0;
+    fclose(fp);
+    return COUNTER_OK;
 err:
     fclose(fp);
-    return -1;
+    fprintf(stderr, "save_aof error: %s\n",strerror(errno));
+    return COUNTER_ERR;
 }
 
 int add_aof(Aof * aof_obj, char * item){
-    if(aof_obj->buffer == NULL || item == NULL)
-        return -1;
+    if(aof_obj->buffer == NULL || item == NULL){
+        fprintf(stderr, "add_aof error\n");
+        return COUNTER_ERR;
+    }
     sdscat(aof_obj->buffer, item);
     if(sdslen(aof_obj->buffer) > AOF_BUFFER_SIZE)
         save_aof(aof_obj);
 
-    return 0;
+    return COUNTER_OK;
+}
+
+// init all the Aof objects with aof_number and aof_filename
+Aof * setAofs(){
+    Aof * aof_set = (Aof *)malloc(sizeof(Aof) * aof_number);
+    if(aof_number <= 0 || !aof_filename || !aof_set){
+        fprintf(stderr, "wrong aof_number or aof_filename\n");
+        return NULL;
+    }
+
+    char buf[1024];
+    for(int i = 0; i < aof_number; i++){
+        sprintf(buf, "%s.%09d", aof_filename, i);
+        if(init_aof(&aof_set[i], i, buf) == COUNTER_ERR){
+            return NULL;
+        }
+    }
+    return aof_set;
 }
 
 unsigned char read_byte(FILE * fp){
@@ -288,10 +312,6 @@ eoferr:
     return COUNTER_ERR;
 }
 
-
-
-
-
 //default format kv, need to free result, is it ok?
 char * _format_kv(char *key, int value){
     char tmp[1024];
@@ -304,7 +324,10 @@ int _key_hash(char * key, int value){
 }
 
 /* rdb parse */
-rdb_state state;
+
+int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
+
+}
 
 void adjust_block_size(long long entry_size){
     fprintf(stdout, "REDISCOUNTER_RDB_BLOCK=%lld\n", REDISCOUNTER_RDB_BLOCK);
@@ -319,7 +342,6 @@ int rdbLoad(char *filename){
     }
     FILE * fp;
 
-
     fp = fopen(filename,"r");
     if (!fp) {
         fprintf(stderr, "Error opening %s for loading: %s\n",
@@ -329,7 +351,13 @@ int rdbLoad(char *filename){
 
     rdb_state state;
     init_rdb_state(&state, fp);
+    Aof * aof_set = setAofs();
+    if(!aof_set){
+        fprintf(stderr, "aof_set failed\n");
+    }
 
+
+    // end of function
     fclose(fp);
     fp = NULL;
     return COUNTER_OK;

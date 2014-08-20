@@ -24,6 +24,11 @@ typedef struct rdb_state{
     sds rdb_filename;
 }rdb_state;
 
+
+long long REDISCOUNTER_RDB_BLOCK = 10240;
+int aof_number;
+char * aof_filename;
+
 #define RDB_INVALID_LEN 252
 #define AOF_BUFFER_SIZE 10240
 
