@@ -25,9 +25,10 @@ typedef struct rdb_state{
 }rdb_state;
 
 
-int aof_number;
-char * aof_filename;
+extern int aof_number;
+extern char * aof_filename;
 extern long long REDISCOUNTER_RDB_BLOCK;
+extern int dump_aof;// -1 for don't save aof, 1 for save aof.
 int rdbLoad(char *filename);
 #define RDB_INVALID_LEN 252
 #define AOF_BUFFER_SIZE 10240

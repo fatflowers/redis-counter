@@ -1,6 +1,9 @@
 #include "rediscounter.h"
 
+int aof_number = 1;
+char * aof_filename = "output.aof";
 long long REDISCOUNTER_RDB_BLOCK = 10240;
+int dump_aof = -1;// -1 for don't save aof, 1 for save aof.
 
 /* Aof class sunlei*/
 typedef struct Aof{
