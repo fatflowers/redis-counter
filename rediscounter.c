@@ -1,5 +1,7 @@
 #include "rediscounter.h"
 
+long long REDISCOUNTER_RDB_BLOCK = 10240;
+
 /* Aof class sunlei*/
 typedef struct Aof{
     int index;
@@ -61,7 +63,8 @@ Aof * setAofs(){
     }
 
     char buf[1024];
-    for(int i = 0; i < aof_number; i++){
+    int i;
+    for(i = 0; i < aof_number; i++){
         sprintf(buf, "%s.%09d", aof_filename, i);
         if(init_aof(&aof_set[i], i, buf) == COUNTER_ERR){
             return NULL;
@@ -319,21 +322,107 @@ char * _format_kv(char *key, int value){
     return strdup(tmp);
 }
 
-int _key_hash(char * key, int value){
+int _key_hash(char * key){
     return 0;
 }
 
-/* rdb parse */
-
-int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
-
-}
 
 void adjust_block_size(long long entry_size){
     fprintf(stdout, "REDISCOUNTER_RDB_BLOCK=%lld\n", REDISCOUNTER_RDB_BLOCK);
     REDISCOUNTER_RDB_BLOCK = entry_size * ((REDISCOUNTER_RDB_BLOCK + entry_size - 1) / entry_size);
     fprintf(stdout, "REDISCOUNTER_RDB_BLOCK=%lld\n", REDISCOUNTER_RDB_BLOCK);
 }
+
+/* rdb parse */
+
+int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
+    adjust_block_size(state.entry_size);
+    long long total = state.size * state.entry_size,
+            count = total / REDISCOUNTER_RDB_BLOCK,
+            rest = total % REDISCOUNTER_RDB_BLOCK,
+            key_count,
+            read_offset = 0,
+            ndeleted_key = 0,
+            nother_key = 0,
+            boundary = REDISCOUNTER_RDB_BLOCK;
+    sds empty_key = sdsnewlen(NULL, state.key_size),
+            deleted_key = sdsnewlen(NULL, state.key_size),
+            buf = sdsnewlen(NULL, REDISCOUNTER_RDB_BLOCK);
+    int i, j, value;
+    char *key = (char *)malloc(sizeof(char) * state.key_size),
+            value_buf[4],
+            *tmp;
+    for(i = 0; i < state.key_size; i++){
+        empty_key[i] = '\0';
+        deleted_key[i] = 'F';
+    }
+    fprintf(stdout, "total=%lld, count=%lld, rest=%lld", total, count, rest);
+    for(i = 0; i <= count; i++){
+        if(i < count){
+            key_count = REDISCOUNTER_RDB_BLOCK / state.entry_size;
+            if (fread(buf,REDISCOUNTER_RDB_BLOCK,1,fp) == 0) {
+                sdsfree(buf);
+                fprintf(stderr, "rdbLoadDict error: %s\n",strerror(errno));
+                return COUNTER_ERR;
+            }
+        }
+        else{
+            boundary = rest;
+            key_count = rest / state.entry_size;
+            if (fread(buf,rest,1,fp) == 0) {
+                sdsfree(buf);
+                fprintf(stderr, "rdbLoadDict error: %s\n",strerror(errno));
+                return COUNTER_ERR;
+            }
+        }
+        // time used...
+        for(j = 0; j < key_count && read_offset < boundary; j++){
+            // get a value
+            if(strncpy(value_buf, buf + read_offset, 4) == NULL){
+                fprintf(stderr, "rdbLoadDict reading value_buf error: %s\n",strerror(errno));
+                return COUNTER_ERR;
+            }
+            read_offset += 4;
+            value = atoi(value_buf);
+            // get a key
+            if(strncpy(key, buf + read_offset, state.key_size) == NULL){
+                fprintf(stderr, "rdbLoadDict reading buf error: %s\n",strerror(errno));
+                return COUNTER_ERR;
+            }
+            read_offset += state.key_size;
+
+            // check key
+            if(strcmp(key, empty_key) == 0){
+                continue;
+            }
+            if(strcmp(key, deleted_key) == 0){
+                ndeleted_key++;
+                continue;
+            }
+            if(value < 1 || value > 100000000){
+                nother_key++;
+                continue;
+            }
+            tmp = _format_kv(key, value);
+            if(add_aof(aof_set + (_key_hash(key) % aof_number), tmp) == COUNTER_ERR)
+                fprintf(stderr, "add_aof error\n");
+            free(tmp);
+        }
+    }
+
+    // save the data in buffer
+    for(i = 0; i < aof_number; i++){
+        if(save_aof(aof_set + i) == COUNTER_ERR)
+            fprintf(stderr, "save_aof error\n");
+    }
+
+    free(key);
+    sdsfree(empty_key);
+    sdsfree(deleted_key);
+    sdsfree(buf);
+    return COUNTER_OK;
+}
+
 
 int rdbLoad(char *filename){
     if(!filename){
@@ -363,45 +452,3 @@ int rdbLoad(char *filename){
     return COUNTER_OK;
 }
 
-/*
-void rdb_get_dict(){
-    adjust_block_size(state.entry_size);
-    long long total = state.size * state.entry_size,
-            count = total / REDISCOUNTER_RDB_BLOCK,
-            rest = total % REDISCOUNTER_RDB_BLOCK,
-            key_count,
-            nkey_read;
-    sds empty_key = sdsnewlen(NULL, state.key_size),
-            deleted_key = sdsnewlen(NULL, state.key_size),
-            buf;
-    int i, j, value;
-    char key
-    for(i = 0; i < state.key_size; i++){
-        empty_key[i] = '\0';
-        deleted_key[i] = 'F';
-    }
-    printf("total=%lld, count=%lld, rest=%lld", total, count, rest);
-    for(i = 0; i <= count; i++){
-        if(i < count){
-            key_count = REDISCOUNTER_RDB_BLOCK / state.entry_size;
-            nkey_read = REDISCOUNTER_RDB_BLOCK;
-            if (fread(buf,REDISCOUNTER_RDB_BLOCK,1,fp) == 0) {
-                sdsfree(val);
-                //report error
-            }
-        }
-        else{
-            key_count = rest / self.entry_size;
-            nkey_read = rest;
-            if (fread(buf,rest,1,fp) == 0) {
-                sdsfree(val);
-                //report error
-            }
-        }
-        //time used...
-        for(j = 0; j < key_count;){
-
-        }
-    }
-}
-*/
