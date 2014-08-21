@@ -3,7 +3,7 @@
 int aof_number = 1;
 char * aof_filename = "output.aof";
 long long REDISCOUNTER_RDB_BLOCK = 10240;
-int dump_aof = -1;// -1 for don't save aof, 1 for save aof.
+int dump_aof = 1;// -1 for don't save aof, 1 for save aof.
 // time recoder
 clock_t _time_begin, _time_counter;
 
@@ -117,35 +117,40 @@ long long rdb_get_long(FILE * fp){
  * isencoded is set to 1 if the readed length is not actually a length but
  * an "encoding type", check the above comments for more info */
 uint32_t rdbLoadLen(FILE *fp, int *isencoded) {
-    unsigned char buf[2];
-    uint32_t len;
-    int type;
+	unsigned char buf[2];
+	uint32_t len;
+	int type;
 
-    if (isencoded) *isencoded = 0;
-    if (fread(buf,1,1,fp) == 0) return REDIS_RDB_LENERR;
-    type = (buf[0]&0xC0)>>6;
-    if (type == REDIS_RDB_6BITLEN) {
-        /* Read a 6 bit len */
-        return buf[0]&0x3F;
-    } else if (type == REDIS_RDB_ENCVAL) {
-        /* Read a 6 bit len encoding type */
-        if (isencoded) *isencoded = 1;
-        return buf[0]&0x3F;
-    } else if (type == REDIS_RDB_14BITLEN) {
-        /* Read a 14 bit len */
-        if (fread(buf+1,1,1,fp) == 0) return REDIS_RDB_LENERR;
-        return ((buf[0]&0x3F)<<8)|buf[1];
-    } else {
-        /* Read a 32 bit len */
-        if (fread(&len,4,1,fp) == 0) return REDIS_RDB_LENERR;
-        return ntohl(len);
-    }
+     if (isencoded) *isencoded = 0;
+	if (fread(buf,1,1,fp) == 0) return REDIS_RDB_LENERR;
+	type = (buf[0]&0xC0)>>6;
+	if (type == REDIS_RDB_6BITLEN) {
+		/* Read a 6 bit len */
+		return buf[0]&0x3F;
+	} 
+#if 0
+	else if (type == REDIS_RDB_ENCVAL) {
+		/* Read a 6 bit len encoding type */
+		if (isencoded) *isencoded = 1;
+		return buf[0]&0x3F;
+    } 
+#endif
+	else if (type == REDIS_RDB_14BITLEN) {
+		/* Read a 14 bit len */
+		if (fread(buf+1,1,1,fp) == 0) return REDIS_RDB_LENERR;
+		return ((buf[0]&0x3F)<<8)|buf[1];
+	} else {
+		/* Read a 32 bit len */
+		if (fread(&len,4,1,fp) == 0) return REDIS_RDB_LENERR;
+		return ntohl(len);
+	}
 }
 
 /* Load an integer-encoded object from file 'fp', with the specified
  * encoding type 'enctype'. If encode is true the function may return
  * an integer-encoded object as reply, otherwise the returned object
  * will always be encoded as a raw string. */
+#if 0
 sds rdbLoadIntegerObject(FILE *fp, int enctype, int encode) {
     unsigned char enc[4];
     long long val;
@@ -193,6 +198,7 @@ err:
     sdsfree(val);
     return NULL;
 }
+#endif
 
 sds rdbGenericLoadStringObject(FILE*fp, int encode) {
     int isencoded;
@@ -200,6 +206,7 @@ sds rdbGenericLoadStringObject(FILE*fp, int encode) {
     sds val;
 
     len = rdbLoadLen(fp,&isencoded);
+#if 0
     if (isencoded) {
         switch(len) {
             case REDIS_RDB_ENC_INT8:
@@ -214,6 +221,7 @@ sds rdbGenericLoadStringObject(FILE*fp, int encode) {
         }
     }
 
+#endif 
     if (len == REDIS_RDB_LENERR) return NULL;
     val = sdsnewlen(NULL,len);
     if (len && fread(val,len,1,fp) == 0) {
@@ -250,7 +258,7 @@ int rdbLoadDoubleValue(FILE *fp, double *val) {
 }
 
 /* check if value is prime, return 1 if it is, 0 otherwise */
-int _isPrime(unsigned long value)
+static int _isPrime(unsigned long value)
 {
     unsigned long i;
     if (value <= 1)
