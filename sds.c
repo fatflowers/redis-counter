@@ -41,8 +41,16 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
+
+#ifndef SDS_H
+#define SDS_H
 #include "sds.h"
+#endif
+
+#ifndef ZMALLOC_H
+#define ZMALLOC_H
 #include "zmalloc.h"
+#endif
 
 static void sdsOomAbort(void) {
     fprintf(stderr,"SDS: Out Of Memory (SDS_ABORT_ON_OOM defined)\n");

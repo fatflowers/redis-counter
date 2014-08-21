@@ -342,7 +342,7 @@ eoferr:
     return COUNTER_ERR;
 }
 
-//default format kv, need to free result, is it ok?
+//default format kv, need to free result,
 char * _format_kv(char *key, int value){
     char tmp[1024];
     sprintf(tmp, "%s:%d\n", key, value);
@@ -350,7 +350,7 @@ char * _format_kv(char *key, int value){
 }
 
 int _key_hash(char * key){
-    return 0;
+    return (key[0] - '0') % aof_number;
 }
 
 
@@ -442,7 +442,8 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
                 continue;
             }
             tmp = _format_kv(key, value);
-            if(add_aof(aof_set + (_key_hash(key) % aof_number), tmp) == COUNTER_ERR)
+            // write aof files if dump_aof is 1
+            if(dump_aof == 1 && add_aof(aof_set + (_key_hash(key) % aof_number), tmp) == COUNTER_ERR)
                 fprintf(stderr, "add_aof error\n");
             saved_key++;
             free(tmp);
@@ -461,7 +462,8 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
 
     // save the data in buffer
     for(i = 0; i < aof_number; i++){
-        if(save_aof(aof_set + i) == COUNTER_ERR)
+        // write aof files if dump_aof is 1
+        if(dump_aof == 1 && save_aof(aof_set + i) == COUNTER_ERR)
             fprintf(stderr, "save_aof error\n");
         sdsfree((aof_set + i)->buffer);
     }
@@ -478,6 +480,7 @@ int rdbLoad(char *filename){
     // init time recoders
     _time_begin = _time_counter = clock();
     show_state("parse begin...\n");
+
     if(!filename){
         fprintf(stderr, "Invalid filename\n");
         return COUNTER_ERR;
