@@ -1,5 +1,24 @@
 #include "rediscounter.h"
 
+
+/**
+ * @brief _format_kv
+ * Format a string with key and value, the string is to be dumped in aof file.
+ * Define a way to get a aof file number from hashing key.
+ * @param key
+ * @param key_len
+ * @param value
+ * @param hashed_key
+ * Save hashed aof file number of type int.
+ * @return Formatted string of k&v
+ */
+char * _format_kv(void *key, int key_len, int value, void *hashed_key){
+    *(int *)hashed_key = (((char *)key)[0] - '0') % aof_number;
+    char tmp[1024];
+    sprintf(tmp, "%s:%d\n", (char *)key, value);
+    return strdup(tmp);
+}
+
 int main(int argc, char **argv)
 {
     char *usage = "Usage:\nredis-counter -[f rdb file] -[n number] -[a aof filename] -[r]\n"
@@ -31,7 +50,7 @@ int main(int argc, char **argv)
             dump_aof = 1;
         }
     }
-    rdbLoad("/home/simon/redis-counter/dump.rdb");
+    rdb_load("/home/simon/redis-counter/dump.rdb", _format_kv);
     return 0;
 }
 

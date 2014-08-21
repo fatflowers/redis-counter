@@ -1,14 +1,37 @@
 #include "rediscounter.h"
-
+/***
+ * Global variables
+ *
+ * @brief aof_number
+ *  number of aof files to be created.
+ *
+ * @brief aof_filename,
+ * prefix of aof filename.
+ *
+ * @brief REDISCOUNTER_RDB_BLOCK
+ * default read block size.
+ *
+ * @brief dump_aof
+ * -1 for don't save aof, 1 for save aof.
+ *
+ * @brief _time_begin
+ * @brief _time_counter
+ * time recoders.
+ */
 int aof_number = 1;
 char * aof_filename = "output.aof";
 long long REDISCOUNTER_RDB_BLOCK = 10240;
-int dump_aof = 1;// -1 for don't save aof, 1 for save aof.
-// time recoder
-clock_t _time_begin, _time_counter;
+int dump_aof = 1;
+format_kv_handler format_handler;
+long _time_begin, _time_counter;
 
+/**
+ * @brief show_state
+ * Show time used and msg.
+ * @param msg
+ */
 void show_state(char * msg){
-    clock_t now = clock();
+    long now = clock();
     fprintf(stdout, "now=%ld, time_used=%lfs, time_total=%lfs, msg=%s",
             now,
             (double)(now - _time_counter) / CLOCKS_PER_SEC,
@@ -17,7 +40,25 @@ void show_state(char * msg){
     _time_counter = now;
 }
 
-/* Aof class sunlei*/
+
+ /****************************
+ * Aof module
+ *
+ * struct Aof
+ * Maintain the data of each aof files.
+ *
+ * init_aof
+ * Init a aof struct.
+ *
+ * save_aof
+ * Dump data in buffer to aof file.
+ *
+ * add_aof
+ * Add data to buffer. If buffer is full, call save_aof.
+ *
+ * set_aofs
+ * Init all the Aof objects with global variables aof_number and aof_filename.
+**/
 typedef struct Aof{
     int index;
     char *filename;
@@ -40,7 +81,6 @@ err:
     return COUNTER_ERR;
 }
 
-// time_used function to be added
 int save_aof(Aof * aof_obj){
     if(strlen(aof_obj->buffer) <= 0)
         return COUNTER_OK;
@@ -77,7 +117,7 @@ int add_aof(Aof * aof_obj, char * item){
 }
 
 // init all the Aof objects with aof_number and aof_filename
-Aof * setAofs(){
+Aof *set_aofs(){
     Aof * aof_set = (Aof *)malloc(sizeof(Aof) * aof_number);
     if(aof_number <= 0 || !aof_filename || !aof_set){
         fprintf(stderr, "wrong aof_number or aof_filename\n");
@@ -101,22 +141,12 @@ unsigned char read_byte(FILE * fp){
     return number;
 }
 
-
-long long rdb_get_long(FILE * fp){
-    long long number;
-    unsigned char digits = read_byte(fp);
-    if(digits > RDB_INVALID_LEN)
-        return -1;
-    if (fread(&number, digits, 1, fp) == 0) return -1;
-    return number;
-}
-
 /* Load an encoded length from the DB, see the REDIS_RDB_* defines on the top
  * of this file for a description of how this are stored on disk.
  *
  * isencoded is set to 1 if the readed length is not actually a length but
  * an "encoding type", check the above comments for more info */
-uint32_t rdbLoadLen(FILE *fp, int *isencoded) {
+uint32_t rdb_load_len(FILE *fp, int *isencoded) {
 	unsigned char buf[2];
 	uint32_t len;
 	int type;
@@ -127,14 +157,7 @@ uint32_t rdbLoadLen(FILE *fp, int *isencoded) {
 	if (type == REDIS_RDB_6BITLEN) {
 		/* Read a 6 bit len */
 		return buf[0]&0x3F;
-	} 
-#if 0
-	else if (type == REDIS_RDB_ENCVAL) {
-		/* Read a 6 bit len encoding type */
-		if (isencoded) *isencoded = 1;
-		return buf[0]&0x3F;
-    } 
-#endif
+    }
 	else if (type == REDIS_RDB_14BITLEN) {
 		/* Read a 14 bit len */
 		if (fread(buf+1,1,1,fp) == 0) return REDIS_RDB_LENERR;
@@ -145,83 +168,13 @@ uint32_t rdbLoadLen(FILE *fp, int *isencoded) {
 		return ntohl(len);
 	}
 }
-
-/* Load an integer-encoded object from file 'fp', with the specified
- * encoding type 'enctype'. If encode is true the function may return
- * an integer-encoded object as reply, otherwise the returned object
- * will always be encoded as a raw string. */
-#if 0
-sds rdbLoadIntegerObject(FILE *fp, int enctype, int encode) {
-    unsigned char enc[4];
-    long long val;
-
-    if (enctype == REDIS_RDB_ENC_INT8) {
-        if (fread(enc,1,1,fp) == 0) return NULL;
-        val = (signed char)enc[0];
-    } else if (enctype == REDIS_RDB_ENC_INT16) {
-        uint16_t v;
-        if (fread(enc,2,1,fp) == 0) return NULL;
-        v = enc[0]|(enc[1]<<8);
-        val = (int16_t)v;
-    } else if (enctype == REDIS_RDB_ENC_INT32) {
-        uint32_t v;
-        if (fread(enc,4,1,fp) == 0) return NULL;
-        v = enc[0]|(enc[1]<<8)|(enc[2]<<16)|(enc[3]<<24);
-        val = (int32_t)v;
-    } else {
-        val = 0; /* anti-warning */
-        fprintf(stderr, "Unknown RDB integer encoding type\n");
-        exit(1);
-        return NULL;
-    }
-
-    return sdsfromlonglong(val);
-}
-
-
-sds rdbLoadLzfStringObject(FILE*fp) {
-    unsigned int len, clen;
-    unsigned char *c = NULL;
-    sds val = NULL;
-
-    if ((clen = rdbLoadLen(fp,NULL)) == REDIS_RDB_LENERR) return NULL;
-    if ((len = rdbLoadLen(fp,NULL)) == REDIS_RDB_LENERR) return NULL;
-    if ((c = zmalloc(clen)) == NULL) goto err;
-    if ((val = sdsnewlen(NULL,len)) == NULL) goto err;
-    if (fread(c,clen,1,fp) == 0) goto err;
-    //lzf_decompress to be added
-    if (lzf_decompress(c,clen,val,len) == 0) goto err;
-    zfree(c);
-    return val;
-err:
-    zfree(c);
-    sdsfree(val);
-    return NULL;
-}
-#endif
-
-sds rdbGenericLoadStringObject(FILE*fp, int encode) {
+sds rdb_generic_load_string_object(FILE*fp, int encode) {
     int isencoded;
     uint32_t len;
     sds val;
 
-    len = rdbLoadLen(fp,&isencoded);
-#if 0
-    if (isencoded) {
-        switch(len) {
-            case REDIS_RDB_ENC_INT8:
-            case REDIS_RDB_ENC_INT16:
-            case REDIS_RDB_ENC_INT32:
-                return rdbLoadIntegerObject(fp,len,encode);
-            case REDIS_RDB_ENC_LZF:
-                return rdbLoadLzfStringObject(fp);
-            default:
-                fprintf(stderr, "Unknown RDB encoding type\n");
-                return NULL;
-        }
-    }
-
-#endif 
+    encode = 0;// avoid warning
+    len = rdb_load_len(fp,&isencoded);
     if (len == REDIS_RDB_LENERR) return NULL;
     val = sdsnewlen(NULL,len);
     if (len && fread(val,len,1,fp) == 0) {
@@ -231,17 +184,16 @@ sds rdbGenericLoadStringObject(FILE*fp, int encode) {
     return val;
 }
 
-
-sds rdbLoadStringObject(FILE *fp) {
-    return rdbGenericLoadStringObject(fp,0);
+sds rdb_load_string_object(FILE *fp) {
+    return rdb_generic_load_string_object(fp,0);
 }
 
-sds rdbLoadEncodedStringObject(FILE *fp) {
-    return rdbGenericLoadStringObject(fp,1);
+sds rdb_load_encoded_string_object(FILE *fp) {
+    return rdb_generic_load_string_object(fp,1);
 }
 
 /* For information about double serialization check rdbSaveDoubleValue() */
-int rdbLoadDoubleValue(FILE *fp, double *val) {
+int rdb_load_double_value(FILE *fp, double *val) {
     char buf[128];
     unsigned char len;
 
@@ -258,7 +210,7 @@ int rdbLoadDoubleValue(FILE *fp, double *val) {
 }
 
 /* check if value is prime, return 1 if it is, 0 otherwise */
-static int _isPrime(unsigned long value)
+static int _is_prime(unsigned long value)
 {
     unsigned long i;
     if (value <= 1)
@@ -274,7 +226,13 @@ static int _isPrime(unsigned long value)
 
     return 1;
 }
-
+/**
+ * @brief init_rdb_state
+ * Read head of rdb file, fill info data to state
+ * @param state, rdb_state to be filled.
+ * @param fp, file pointer for current rdb file.
+ * @return success:COUNTER_OK, failure:COUNTER_ERR.
+ */
 int init_rdb_state(rdb_state * state, FILE * fp){
     char buf[1024];
     int rdbver;
@@ -283,6 +241,7 @@ int init_rdb_state(rdb_state * state, FILE * fp){
 
     if (fread(buf,9,1,fp) == 0) goto eoferr;
     buf[9] = '\0';
+    /*-------redis signature-------*/
     if (memcmp(buf,"REDIS",5) != 0) {
         fclose(fp);
         fprintf(stderr,"Wrong signature trying to load DB from file\n");
@@ -291,45 +250,43 @@ int init_rdb_state(rdb_state * state, FILE * fp){
     /*-------redis version check-------*/
     rdbver = atoi(buf+5);
     if (rdbver >= 2 && rdbver <= 4) {
-        if (!(sdstemp = rdbLoadStringObject(fp)) || rdbLoadDoubleValue(fp, &val)) {
+        /*-------rdb file name & offset-------*/
+        if (!(sdstemp = rdb_load_string_object(fp)) || rdb_load_double_value(fp, &val)) {
             fprintf(stderr, "Failed to get aof name or offset\n");
             goto eoferr;
         }
         state->offset = val;
-        char aofname[255];
-        sprintf(aofname, "%s", sdstemp);
-        state->rdb_filename = strdup(aofname);
         fprintf(stdout, "RDB position: %s-%lld\n",
                     state->rdb_filename, state->offset);
     } else if (rdbver != 1) {
         fprintf(stderr, "Can't handle RDB format version %d\n",rdbver);
         goto eoferr;
     }
-    /* RDB created by 1.1.0(with LRU support) added a type field */
+    /*------- RDB created by 1.1.0(with LRU support) added a type field -------*/
     if (rdbver == 4) {
-        if (rdbLoadDoubleValue(fp, &val) == -1) {
+        if (rdb_load_double_value(fp, &val) == -1) {
             fprintf(stderr, "Error getting type info from RDB");
             goto eoferr;
         }
     }
     fprintf(stdout, "Loading dict information...\n");
-    /* load db size, used, deleted_slots, key_size, entry_size */
-    if (rdbLoadDoubleValue(fp, &val) == -1) goto eoferr;
+    /*------- load db size, used, deleted_slots, key_size, entry_size -------*/
+    if (rdb_load_double_value(fp, &val) == -1) goto eoferr;
     state->size = (unsigned long)val;
-    if (rdbLoadDoubleValue(fp, &val) == -1) goto eoferr;
+    if (rdb_load_double_value(fp, &val) == -1) goto eoferr;
     state->used = (unsigned long)val;
-    if (rdbLoadDoubleValue(fp, &val) == -1) goto eoferr;
+    if (rdb_load_double_value(fp, &val) == -1) goto eoferr;
     state->deleted = (unsigned long)val;
-    if (rdbLoadDoubleValue(fp, &val) == -1) goto eoferr;
+    if (rdb_load_double_value(fp, &val) == -1) goto eoferr;
     state->key_size = (unsigned int)val;
-    if (rdbLoadDoubleValue(fp, &val) == -1) goto eoferr;
+    if (rdb_load_double_value(fp, &val) == -1) goto eoferr;
     state->entry_size = (unsigned int)val;
     fprintf(stdout,  "RDB info: size-%lld, used-%lld, deleted-%lld, key-size-%lld, "
                 "entry-size-%lld\n", state->size, state->used, state->deleted, state->key_size, state->entry_size);
     state->value_size = state->entry_size - state->key_size;
 
-    // check if values are valid
-    if (!_isPrime(state->size) ||
+    /*------- check if values are valid -------*/
+    if (!_is_prime(state->size) ||
         state->used > state->size ||
         state->deleted > state->size ||
         state->key_size < 1)
@@ -345,32 +302,30 @@ int init_rdb_state(rdb_state * state, FILE * fp){
     sdsfree(sdstemp);
     return COUNTER_OK;
 eoferr:
-    sdsfree(sdstemp);
+    if(sdslen(sdstemp) > 0)
+        sdsfree(sdstemp);
     fprintf(stderr, "init_rdb_state failed\n");
     return COUNTER_ERR;
 }
 
-//default format kv, need to free result,
-char * _format_kv(char *key, int value){
-    char tmp[1024];
-    sprintf(tmp, "%s:%d\n", key, value);
-    return strdup(tmp);
-}
-
-int _key_hash(char * key){
-    return (key[0] - '0') % aof_number;
-}
-
-
+/*-------block : read buffer size-------*/
 void adjust_block_size(long long entry_size){
     fprintf(stdout, "REDISCOUNTER_RDB_BLOCK=%lld\n", REDISCOUNTER_RDB_BLOCK);
     REDISCOUNTER_RDB_BLOCK = entry_size * ((REDISCOUNTER_RDB_BLOCK + entry_size - 1) / entry_size);
     fprintf(stdout, "REDISCOUNTER_RDB_BLOCK=%lld\n", REDISCOUNTER_RDB_BLOCK);
 }
 
-/* rdb parse */
-
-int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
+/**
+ * @brief rdb_load_dict
+ * Parse the data section of rdb file.
+ * @param fp
+ * @param state
+ * State of rdb file.
+ * @param aof_set
+ * Aof file state set.
+ * @return
+ */
+int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler format_handler) {
     adjust_block_size(state.entry_size);
     long long total = state.size * state.entry_size,
             count = total / REDISCOUNTER_RDB_BLOCK,
@@ -428,7 +383,7 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
             }
             read_offset += 4;
 
-            // convert octonary number system to long long
+            // convert octonary number to long long
             value = *(long long *)value_buf;
             // get a key
             if(strncpy(key, buf + read_offset, state.key_size) == NULL){
@@ -449,9 +404,10 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
                 nother_key++;
                 continue;
             }
-            tmp = _format_kv(key, value);
+            int hashed_key = 0;
+            tmp = format_handler(key, strlen(key), value, &hashed_key);
             // write aof files if dump_aof is 1
-            if(dump_aof == 1 && add_aof(aof_set + (_key_hash(key) % aof_number), tmp) == COUNTER_ERR)
+            if(dump_aof == 1 && add_aof(aof_set + hashed_key, tmp) == COUNTER_ERR)
                 fprintf(stderr, "add_aof error\n");
             saved_key++;
             free(tmp);
@@ -483,8 +439,13 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
     return COUNTER_OK;
 }
 
-
-int rdbLoad(char *filename){
+/**
+ * @brief rdb_load
+ * Main function of this file
+ * @param filename
+ * @return
+ */
+int rdb_load(char *filename, format_kv_handler format_handler){
     // init time recoders
     _time_begin = _time_counter = clock();
     show_state("parse begin...\n");
@@ -503,16 +464,19 @@ int rdbLoad(char *filename){
     }
 
     rdb_state state;
+    /*------ parse header section of rdb file ------*/
     if(init_rdb_state(&state, fp) == COUNTER_ERR){
         fprintf(stderr, "init_rdb_state failed\n");
         return COUNTER_ERR;
     }
-    Aof * aof_set = setAofs();
+    Aof * aof_set = set_aofs();
     if(!aof_set){
         fprintf(stderr, "aof_set failed\n");
+        return COUNTER_ERR;
     }
 
-    if(rdbLoadDict(fp, state, aof_set) == COUNTER_ERR){
+    /*------ parse data section of rdb file ------*/
+    if(rdb_load_dict(fp, state, aof_set, format_handler) == COUNTER_ERR){
         fprintf(stderr, "rdbLoadDict failed\n");
         return COUNTER_ERR;
     }

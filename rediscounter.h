@@ -11,10 +11,19 @@
 #include <time.h>
 #include "sds.h"
 #include "zmalloc.h"
-#include "lzf.h"
 
-//defination of key-value formatting
-typedef char * format_kv(void * key, int key_len, long value);
+/**
+ * @brief _format_kv
+ * Format a string with key and value, the string is to be dumped in aof file.
+ * Define a way to get a aof file number from hashing key.
+ * @param key
+ * @param key_len
+ * @param value
+ * @param hashed_key
+ * Save hashed aof file number of type int.
+ * @return Formatted string of k&v
+ */
+typedef char * format_kv_handler(void * key, int key_len, long value, void *hashed_key);
 typedef struct rdb_state{
     long long offset;
     long long size; // dbsize
@@ -26,12 +35,12 @@ typedef struct rdb_state{
     sds rdb_filename;
 }rdb_state;
 
-
+extern format_kv_handler format_handler;
 extern int aof_number;
 extern char * aof_filename;
 extern long long REDISCOUNTER_RDB_BLOCK;
 extern int dump_aof;// -1 for don't save aof, 1 for save aof.
-int rdbLoad(char *filename);
+int rdb_load(char *filename, format_kv_handler handler);
 #define RDB_INVALID_LEN 252
 #define AOF_BUFFER_SIZE 10240
 
