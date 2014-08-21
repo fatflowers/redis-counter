@@ -22,7 +22,6 @@ int aof_number = 1;
 char * aof_filename = "output.aof";
 long long REDISCOUNTER_RDB_BLOCK = 10240;
 int dump_aof = 1;
-format_kv_handler format_handler;
 long _time_begin, _time_counter;
 
 /**
