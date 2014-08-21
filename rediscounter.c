@@ -4,6 +4,18 @@ int aof_number = 1;
 char * aof_filename = "output.aof";
 long long REDISCOUNTER_RDB_BLOCK = 10240;
 int dump_aof = -1;// -1 for don't save aof, 1 for save aof.
+// time recoder
+clock_t _time_begin, _time_counter;
+
+void show_state(char * msg){
+    clock_t now = clock();
+    fprintf(stdout, "now=%ld, time_used=%lfs, time_total=%lfs, msg=%s",
+            now,
+            (double)(now - _time_counter) / CLOCKS_PER_SEC,
+            (double)(now - _time_begin) / CLOCKS_PER_SEC,
+            msg);
+    _time_counter = now;
+}
 
 /* Aof class sunlei*/
 typedef struct Aof{
@@ -17,7 +29,7 @@ int init_aof(Aof * aof_obj, int index, char *filename){
     aof_obj->filename = strdup(filename);
     if(!filename)
         goto err;
-    if((aof_obj->buffer = sdsnewlen(NULL, AOF_BUFFER_SIZE)) == NULL)
+    if((aof_obj->buffer = sdsnewlen(NULL, REDISCOUNTER_RDB_BLOCK)) == NULL)
         goto err;
     return COUNTER_OK;
 err:
@@ -28,15 +40,21 @@ err:
     return COUNTER_ERR;
 }
 
-//time_used function to be added
+// time_used function to be added
 int save_aof(Aof * aof_obj){
-    if(aof_obj->buffer)
+    if(strlen(aof_obj->buffer) <= 0)
         return COUNTER_OK;
     FILE *fp;
+    char buf[512];
     if((fp = fopen(aof_obj->filename, "ab+")) == NULL)
         goto err;
+    // show save state
+    sprintf(buf, "save buffer, filename=%s, len=%d\n", aof_obj->filename, strlen(aof_obj->buffer));
+    show_state(buf);
     if(fwrite(aof_obj->buffer, strlen(aof_obj->buffer), 1, fp) != 1)
         goto err;
+    // clear the buffer
+    aof_obj->buffer[0] = '\0';
     fclose(fp);
     return COUNTER_OK;
 err:
@@ -50,10 +68,11 @@ int add_aof(Aof * aof_obj, char * item){
         fprintf(stderr, "add_aof error\n");
         return COUNTER_ERR;
     }
-    sdscat(aof_obj->buffer, item);
-    if(sdslen(aof_obj->buffer) > AOF_BUFFER_SIZE)
+    // dump buffer to file if it's too large
+    if(strlen(aof_obj->buffer) + strlen(item) >= AOF_BUFFER_SIZE)
         save_aof(aof_obj);
 
+    strcat(aof_obj->buffer, item);
     return COUNTER_OK;
 }
 
@@ -69,7 +88,7 @@ Aof * setAofs(){
     int i;
     for(i = 0; i < aof_number; i++){
         sprintf(buf, "%s.%09d", aof_filename, i);
-        if(init_aof(&aof_set[i], i, buf) == COUNTER_ERR){
+        if(init_aof(aof_set + i, i, buf) == COUNTER_ERR){
             return NULL;
         }
     }
@@ -166,7 +185,7 @@ sds rdbLoadLzfStringObject(FILE*fp) {
     if ((val = sdsnewlen(NULL,len)) == NULL) goto err;
     if (fread(c,clen,1,fp) == 0) goto err;
     //lzf_decompress to be added
-    //if (lzf_decompress(c,clen,val,len) == 0) goto err;
+    if (lzf_decompress(c,clen,val,len) == 0) goto err;
     zfree(c);
     return val;
 err:
@@ -259,27 +278,32 @@ int init_rdb_state(rdb_state * state, FILE * fp){
     if (memcmp(buf,"REDIS",5) != 0) {
         fclose(fp);
         fprintf(stderr,"Wrong signature trying to load DB from file\n");
-        return COUNTER_ERR;
+        goto eoferr;
     }
     /*-------redis version check-------*/
     rdbver = atoi(buf+5);
     if (rdbver >= 2 && rdbver <= 4) {
-        if (!(sdstemp = rdbLoadStringObject(fp)) || rdbLoadDoubleValue(fp, (double *)&(state->offset))) {
-            fclose(fp);
+        if (!(sdstemp = rdbLoadStringObject(fp)) || rdbLoadDoubleValue(fp, &val)) {
             fprintf(stderr, "Failed to get aof name or offset\n");
-            return COUNTER_ERR;
+            goto eoferr;
         }
+        state->offset = val;
         char aofname[255];
         sprintf(aofname, "%s", sdstemp);
         state->rdb_filename = strdup(aofname);
         fprintf(stdout, "RDB position: %s-%lld\n",
                     state->rdb_filename, state->offset);
     } else if (rdbver != 1) {
-        fclose(fp);
         fprintf(stderr, "Can't handle RDB format version %d\n",rdbver);
-        return COUNTER_ERR;
+        goto eoferr;
     }
-
+    /* RDB created by 1.1.0(with LRU support) added a type field */
+    if (rdbver == 4) {
+        if (rdbLoadDoubleValue(fp, &val) == -1) {
+            fprintf(stderr, "Error getting type info from RDB");
+            goto eoferr;
+        }
+    }
     fprintf(stdout, "Loading dict information...\n");
     /* load db size, used, deleted_slots, key_size, entry_size */
     if (rdbLoadDoubleValue(fp, &val) == -1) goto eoferr;
@@ -307,7 +331,7 @@ int init_rdb_state(rdb_state * state, FILE * fp){
                 state->size, state->used, state->deleted, state->key_size);
         fprintf(stderr, "Error loading from DB. Aborting now.\n");
         exit(1);
-        return COUNTER_ERR;
+        goto eoferr;;
     }
 
     sdsfree(sdstemp);
@@ -321,7 +345,7 @@ eoferr:
 //default format kv, need to free result, is it ok?
 char * _format_kv(char *key, int value){
     char tmp[1024];
-    sprintf(tmp, "%s:%d", key, value);
+    sprintf(tmp, "%s:%d\n", key, value);
     return strdup(tmp);
 }
 
@@ -347,14 +371,16 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
             read_offset = 0,
             ndeleted_key = 0,
             nother_key = 0,
-            boundary = REDISCOUNTER_RDB_BLOCK;
+            boundary = REDISCOUNTER_RDB_BLOCK,
+            saved_key = 0;
     sds empty_key = sdsnewlen(NULL, state.key_size),
             deleted_key = sdsnewlen(NULL, state.key_size),
             buf = sdsnewlen(NULL, REDISCOUNTER_RDB_BLOCK);
     int i, j, value;
     char *key = (char *)malloc(sizeof(char) * state.key_size),
             value_buf[4],
-            *tmp;
+            *tmp,
+            state_buf[1024];
     for(i = 0; i < state.key_size; i++){
         empty_key[i] = '\0';
         deleted_key[i] = 'F';
@@ -378,7 +404,14 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
                 return COUNTER_ERR;
             }
         }
+
+        // show state
+        sprintf(state_buf, "get dict, block_id=%d block_size=%lfM\n"
+                "key_count=%lld\n", i, REDISCOUNTER_RDB_BLOCK / 1024.0 / 1024.0, key_count);
+        show_state(state_buf);
+
         // time used...
+        read_offset = 0;
         for(j = 0; j < key_count && read_offset < boundary; j++){
             // get a value
             if(strncpy(value_buf, buf + read_offset, 4) == NULL){
@@ -386,7 +419,9 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
                 return COUNTER_ERR;
             }
             read_offset += 4;
-            value = atoi(value_buf);
+
+            // convert octonary number system to long long
+            value = *(long long *)value_buf;
             // get a key
             if(strncpy(key, buf + read_offset, state.key_size) == NULL){
                 fprintf(stderr, "rdbLoadDict reading buf error: %s\n",strerror(errno));
@@ -395,10 +430,10 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
             read_offset += state.key_size;
 
             // check key
-            if(strcmp(key, empty_key) == 0){
+            if(memcmp(key, empty_key, state.key_size) == 0){
                 continue;
             }
-            if(strcmp(key, deleted_key) == 0){
+            if(memcmp(key, deleted_key, state.key_size) == 0){
                 ndeleted_key++;
                 continue;
             }
@@ -409,14 +444,26 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
             tmp = _format_kv(key, value);
             if(add_aof(aof_set + (_key_hash(key) % aof_number), tmp) == COUNTER_ERR)
                 fprintf(stderr, "add_aof error\n");
+            saved_key++;
             free(tmp);
         }
+        // show parse
+        sprintf(buf, "\nblock_id=%d block_size=%lfM\n"
+                "key_count=%lld saved_key=%lld\n"
+                "deleted_key=%lld other_key=%lld\n"
+                "%lf finished\n\n",
+                i, REDISCOUNTER_RDB_BLOCK / 1024.0 / 1024.0,
+                key_count, saved_key,
+                ndeleted_key, nother_key,
+                count > i ? i * 100 / (double)count : 100);
+        show_state(buf);
     }
 
     // save the data in buffer
     for(i = 0; i < aof_number; i++){
         if(save_aof(aof_set + i) == COUNTER_ERR)
             fprintf(stderr, "save_aof error\n");
+        sdsfree((aof_set + i)->buffer);
     }
 
     free(key);
@@ -428,6 +475,9 @@ int rdbLoadDict(FILE *fp, rdb_state state, Aof * aof_set) {
 
 
 int rdbLoad(char *filename){
+    // init time recoders
+    _time_begin = _time_counter = clock();
+    show_state("parse begin...\n");
     if(!filename){
         fprintf(stderr, "Invalid filename\n");
         return COUNTER_ERR;
@@ -442,13 +492,19 @@ int rdbLoad(char *filename){
     }
 
     rdb_state state;
-    init_rdb_state(&state, fp);
+    if(init_rdb_state(&state, fp) == COUNTER_ERR){
+        fprintf(stderr, "init_rdb_state failed\n");
+        return COUNTER_ERR;
+    }
     Aof * aof_set = setAofs();
     if(!aof_set){
         fprintf(stderr, "aof_set failed\n");
     }
 
-
+    if(rdbLoadDict(fp, state, aof_set) == COUNTER_ERR){
+        fprintf(stderr, "rdbLoadDict failed\n");
+        return COUNTER_ERR;
+    }
     // end of function
     fclose(fp);
     fp = NULL;

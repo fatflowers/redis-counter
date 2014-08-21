@@ -8,14 +8,16 @@
 #include <limits.h>
 #include <math.h>
 #include <errno.h>
+#include <time.h>
 #include "sds.h"
 #include "zmalloc.h"
+#include "lzf.h"
 
 //defination of key-value formatting
 typedef char * format_kv(void * key, int key_len, long value);
 typedef struct rdb_state{
     long long offset;
-    long long size;
+    long long size; // dbsize
     long long used;
     long long deleted;
     long long key_size;
