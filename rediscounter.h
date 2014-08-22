@@ -1,8 +1,20 @@
+/***
+ * redis counter.
+ * Parse redis rdb file, count deleted keys, other keys and saved keys.
+ * Save key value pair into aof files, format style can be defined with format_kv_handler defined in rediscounter.h and called by rdb_load function.
+ *
+ * author: sunlei
+ * date: 2014.08.22
+***/
+
 #ifndef REDISCOUNTER_H
 #define REDISCOUNTER_H
 
 #include <stdio.h>
+#ifndef STRING_H
+#define STRING_H
 #include <string.h>
+#endif
 #include <stdlib.h>
 #include <arpa/inet.h> // for ntohl
 #include <limits.h>

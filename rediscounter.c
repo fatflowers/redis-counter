@@ -1,3 +1,12 @@
+/***
+ * redis counter.
+ * Parse redis rdb file, count deleted keys, other keys and saved keys.
+ * Save key value pair into aof files, format style can be defined with format_kv_handler defined in rediscounter.h and called by rdb_load function.
+ *
+ * author: sunlei
+ * date: 2014.08.22
+***/
+
 #include "rediscounter.h"
 /***
  * Global variables
@@ -461,7 +470,7 @@ int rdb_load(char *filename, format_kv_handler format_handler){
 
     fp = fopen(filename,"r");
     if (!fp) {
-        fprintf(stderr, "Error opening %s for loading: %s\n",
+        fprintf(stderr, "Error opening %s for loading, probably need an absolute path. error: %s\n",
             filename, strerror(errno));
         return COUNTER_ERR;
     }
