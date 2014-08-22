@@ -21,7 +21,7 @@
 int aof_number = 1;
 char * aof_filename = "output.aof";
 long long REDISCOUNTER_RDB_BLOCK = 10240;
-int dump_aof = 1;
+int dump_aof = -1;
 long _time_begin, _time_counter;
 
 /**
@@ -66,7 +66,7 @@ typedef struct Aof{
 
 int init_aof(Aof * aof_obj, int index, char *filename){
     aof_obj->index = index;
-    aof_obj->filename = strdup(filename);
+    aof_obj->filename = (char *)strdup(filename);
     if(!filename)
         goto err;
     if((aof_obj->buffer = sdsnewlen(NULL, REDISCOUNTER_RDB_BLOCK)) == NULL)
@@ -172,7 +172,8 @@ sds rdb_generic_load_string_object(FILE*fp, int encode) {
     uint32_t len;
     sds val;
 
-    encode = 0;// avoid warning
+    if (encode)
+        encode = 0;// avoid warning
     len = rdb_load_len(fp,&isencoded);
     if (len == REDIS_RDB_LENERR) return NULL;
     val = sdsnewlen(NULL,len);
@@ -430,6 +431,9 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
             fprintf(stderr, "save_aof error\n");
         sdsfree((aof_set + i)->buffer);
     }
+    // show all done info
+    sprintf(buf, "all done: saved_key=%lld deleted_key=%lld other_key=%lld\n", saved_key, ndeleted_key, nother_key);
+    show_state(buf);
 
     free(key);
     sdsfree(empty_key);
