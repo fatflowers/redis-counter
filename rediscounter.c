@@ -75,7 +75,6 @@ typedef struct Aof{
 
 int init_aof(Aof * aof_obj, int index, char *filename){
     aof_obj->index = index;
-	strdup(filename);
     aof_obj->filename = (char *)strdup(filename);
     if(!filename)
         goto err;
@@ -440,6 +439,7 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
         if(dump_aof == 1 && save_aof(aof_set + i) == COUNTER_ERR)
             fprintf(stderr, "save_aof error\n");
         sdsfree((aof_set + i)->buffer);
+        sdsfree((aof_set + i)->filename);
     }
     // show all done info
     sprintf(buf, "all done: saved_key=%lld deleted_key=%lld other_key=%lld\n", saved_key, ndeleted_key, nother_key);
