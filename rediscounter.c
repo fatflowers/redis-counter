@@ -388,7 +388,7 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
             // get a value
             if(strncpy(value_buf, buf + read_offset, 4) == NULL){
                 fprintf(stderr, "rdbLoadDict reading value_buf error: %s\n",strerror(errno));
-                return COUNTER_ERR;
+                goto err;
             }
             read_offset += 4;
 
@@ -397,7 +397,7 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
             // get a key
             if(strncpy(key, buf + read_offset, state.key_size) == NULL){
                 fprintf(stderr, "rdbLoadDict reading buf error: %s\n",strerror(errno));
-                return COUNTER_ERR;
+                goto err;
             }
             read_offset += state.key_size;
 
@@ -449,6 +449,13 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
     sdsfree(deleted_key);
     sdsfree(buf);
     return COUNTER_OK;
+
+err:
+    free(key);
+    sdsfree(empty_key);
+    sdsfree(deleted_key);
+    sdsfree(buf);
+    return COUNTER_ERR;
 }
 
 /**
@@ -467,34 +474,41 @@ int rdb_load(char *filename, format_kv_handler format_handler){
         return COUNTER_ERR;
     }
     FILE * fp;
+    Aof * aof_set  = NULL;
 
     fp = fopen(filename,"r");
     if (!fp) {
         fprintf(stderr, "Error opening %s for loading, probably need an absolute path. error: %s\n",
             filename, strerror(errno));
-        return COUNTER_ERR;
+        goto err;
     }
 
     rdb_state state;
     /*------ parse header section of rdb file ------*/
     if(init_rdb_state(&state, fp) == COUNTER_ERR){
         fprintf(stderr, "init_rdb_state failed\n");
-        return COUNTER_ERR;
+        goto err;
     }
-    Aof * aof_set = set_aofs();
+    aof_set = set_aofs();
     if(!aof_set){
         fprintf(stderr, "aof_set failed\n");
-        return COUNTER_ERR;
+        goto err;
     }
 
     /*------ parse data section of rdb file ------*/
     if(rdb_load_dict(fp, state, aof_set, format_handler) == COUNTER_ERR){
         fprintf(stderr, "rdbLoadDict failed\n");
-        return COUNTER_ERR;
+        goto err;
     }
     // end of function
     fclose(fp);
     fp = NULL;
+    free(aof_set);
     return COUNTER_OK;
+
+err:
+    fclose(fp);
+    free(aof_set);
+    return COUNTER_ERR;
 }
 
