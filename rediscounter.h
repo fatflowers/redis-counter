@@ -10,11 +10,14 @@
 #ifndef REDISCOUNTER_H
 #define REDISCOUNTER_H
 
-#include <stdio.h>
-#ifndef STRING_H
-#define STRING_H
-#include <string.h>
+#if defined(__linux__) || defined(__OpenBSD__)
+#define _XOPEN_SOURCE 700
+#else
+#define _XOPEN_SOURCE
 #endif
+
+#include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <arpa/inet.h> // for ntohl
 #include <limits.h>

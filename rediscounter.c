@@ -75,6 +75,7 @@ typedef struct Aof{
 
 int init_aof(Aof * aof_obj, int index, char *filename){
     aof_obj->index = index;
+	strdup(filename);
     aof_obj->filename = (char *)strdup(filename);
     if(!filename)
         goto err;

@@ -8,10 +8,10 @@
 ***/
 
 #include "rediscounter.h"
-#ifndef STRING_H
-#define STRING_H
+//#ifndef STRING_H
+//#define STRING_H
 #include <string.h>
-#endif
+//#endif
 
 /**
  * @brief _format_kv
