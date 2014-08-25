@@ -41,7 +41,7 @@ int main(int argc, char **argv)
             "\t-a --name \tspecify name of aof files. \n\t\t\tDefault: output.aof\n"
             "\t-s --save \tSave mode, save aof file. \n\t\t\tDefault: no\n"
             "\t Notice: This tool only test on redis 2.2 and 2.4, so it may be error in 2.4 later.\n";
-
+    rdb_load("/home/simon/redis-counter/src/dump.rdb", _format_kv);
     if(argc <= 1) {
         fprintf(stderr, "%s", usage);
         exit(1);

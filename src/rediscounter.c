@@ -70,6 +70,7 @@ void show_state(char * msg){
 typedef struct Aof{
     int index;
     char *filename;
+    FILE *fp;
     sds buffer;
 }Aof;
 
@@ -78,11 +79,14 @@ int init_aof(Aof * aof_obj, int index, char *filename){
     aof_obj->filename = (char *)strdup(filename);
     if(!filename)
         goto err;
+    if((aof_obj->fp = fopen(aof_obj->filename, "ab+")) == NULL)
+        goto err;
     if((aof_obj->buffer = sdsnewlen(NULL, REDISCOUNTER_RDB_BLOCK)) == NULL)
         goto err;
     return COUNTER_OK;
 err:
     free(aof_obj->filename);
+    fclose(aof_obj->fp);
     sdsfree(aof_obj->buffer);
     fprintf(stderr, "init_aof filename: %s error: %s\n",
             filename, strerror(errno));
@@ -92,21 +96,16 @@ err:
 int save_aof(Aof * aof_obj){
     if(strlen(aof_obj->buffer) <= 0)
         return COUNTER_OK;
-    FILE *fp;
     char buf[512];
-    if((fp = fopen(aof_obj->filename, "ab+")) == NULL)
-        goto err;
     // show save state
     sprintf(buf, "save buffer, filename=%s, len=%ld\n", aof_obj->filename, (long unsigned int)strlen(aof_obj->buffer));
     show_state(buf);
-    if(fwrite(aof_obj->buffer, strlen(aof_obj->buffer), 1, fp) != 1)
+    if(fwrite(aof_obj->buffer, strlen(aof_obj->buffer), 1, aof_obj->fp) != 1)
         goto err;
     // clear the buffer
     aof_obj->buffer[0] = '\0';
-    fclose(fp);
     return COUNTER_OK;
 err:
-    fclose(fp);
     fprintf(stderr, "save_aof error: %s\n",strerror(errno));
     return COUNTER_ERR;
 }
@@ -440,6 +439,7 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
             fprintf(stderr, "save_aof error\n");
         sdsfree((aof_set + i)->buffer);
         free((aof_set + i)->filename);
+        fclose((aof_set + i)->fp);
     }
     // show all done info
     sprintf(buf, "all done: saved_key=%lld deleted_key=%lld other_key=%lld\n", saved_key, ndeleted_key, nother_key);
