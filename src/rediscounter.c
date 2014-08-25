@@ -97,7 +97,7 @@ int save_aof(Aof * aof_obj){
     if((fp = fopen(aof_obj->filename, "ab+")) == NULL)
         goto err;
     // show save state
-    sprintf(buf, "save buffer, filename=%s, len=%d\n", aof_obj->filename, strlen(aof_obj->buffer));
+    sprintf(buf, "save buffer, filename=%s, len=%ld\n", aof_obj->filename, (long unsigned int)strlen(aof_obj->buffer));
     show_state(buf);
     if(fwrite(aof_obj->buffer, strlen(aof_obj->buffer), 1, fp) != 1)
         goto err;
