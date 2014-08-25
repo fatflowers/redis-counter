@@ -7,6 +7,7 @@ Key-value _format_ saved in aof files and _hash_ strategy for which file current
 
 The _format_ and _hash_ strategy can be defined in:
     
+    '''c
     /**
      * @brief _format_kv
      * Format a string with key and value, the string is to be dumped in aof file.
@@ -19,3 +20,4 @@ The _format_ and _hash_ strategy can be defined in:
      * @return Formatted string of k&v
      */
     typedef char * format_kv_handler(void * key, int key_len, long value, void *hashed_key);
+    '''
