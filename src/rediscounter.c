@@ -26,12 +26,16 @@
  * @brief _time_begin
  * @brief _time_counter
  * time recoders.
+ *
+ * @brief print_count
+ * print state every PRINT_BLOCK keys
  */
 int aof_number = 1;
 char * aof_filename = "output.aof";
 long long REDISCOUNTER_RDB_BLOCK = 10240;
 int dump_aof = -1;
 long _time_begin, _time_counter;
+int print_count = 0;
 
 /**
  * @brief show_state
@@ -98,8 +102,11 @@ int save_aof(Aof * aof_obj){
         return COUNTER_OK;
     char buf[512];
     // show save state
-    sprintf(buf, "save buffer, filename=%s, len=%ld\n", aof_obj->filename, (long unsigned int)strlen(aof_obj->buffer));
-    show_state(buf);
+    if(print_count > PRINT_BLOCK){
+        print_count = 0;
+        sprintf(buf, "save buffer, filename=%s, len=%ld\n", aof_obj->filename, (long unsigned int)strlen(aof_obj->buffer));
+        show_state(buf);
+    }
     if(fwrite(aof_obj->buffer, strlen(aof_obj->buffer), 1, aof_obj->fp) != 1)
         goto err;
     // clear the buffer
@@ -264,8 +271,10 @@ int init_rdb_state(rdb_state * state, FILE * fp){
             goto eoferr;
         }
         state->offset = val;
+        /*
         fprintf(stdout, "RDB position: %s-%lld\n",
                     state->rdb_filename, state->offset);
+                    */
     } else if (rdbver != 1) {
         fprintf(stderr, "Can't handle RDB format version %d\n",rdbver);
         goto eoferr;
@@ -375,11 +384,13 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
                 return COUNTER_ERR;
             }
         }
-
         // show state
-        sprintf(state_buf, "get dict, block_id=%d block_size=%lfM\n"
-                "key_count=%lld\n", i, REDISCOUNTER_RDB_BLOCK / 1024.0 / 1024.0, key_count);
-        show_state(state_buf);
+        if(print_count > PRINT_BLOCK){
+            print_count = 0;
+            sprintf(state_buf, "get dict, block_id=%d block_size=%lfM\n"
+                    "key_count=%lld\n", i, REDISCOUNTER_RDB_BLOCK / 1024.0 / 1024.0, key_count);
+            show_state(state_buf);
+        }
 
         // time used...
         read_offset = 0;
@@ -419,17 +430,21 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
                 fprintf(stderr, "add_aof error\n");
             saved_key++;
             free(tmp);
+            print_count += key_count;
         }
         // show parse
-        sprintf(buf, "\nblock_id=%d block_size=%lfM\n"
-                "key_count=%lld saved_key=%lld\n"
-                "deleted_key=%lld other_key=%lld\n"
-                "%lf finished\n\n",
-                i, REDISCOUNTER_RDB_BLOCK / 1024.0 / 1024.0,
-                key_count, saved_key,
-                ndeleted_key, nother_key,
-                count > i ? i * 100 / (double)count : 100);
-        show_state(buf);
+        if(print_count > PRINT_BLOCK){
+            print_count = 0;
+            sprintf(buf, "\nblock_id=%d block_size=%lfM\n"
+                    "key_count=%lld saved_key=%lld\n"
+                    "deleted_key=%lld other_key=%lld\n"
+                    "%lf finished\n\n",
+                    i, REDISCOUNTER_RDB_BLOCK / 1024.0 / 1024.0,
+                    key_count, saved_key,
+                    ndeleted_key, nother_key,
+                    count > i ? i * 100 / (double)count : 100);
+            show_state(buf);
+        }
     }
 
     // save the data in buffer

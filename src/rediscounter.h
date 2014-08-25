@@ -64,6 +64,8 @@ extern long long REDISCOUNTER_RDB_BLOCK;
 extern int dump_aof;// -1 for don't save aof, 1 for save aof.
 
 int rdb_load(char *filename, format_kv_handler handler);
+// print state every PRINT_BLOCK keys
+#define PRINT_BLOCK 5000
 #define RDB_INVALID_LEN 252
 #define AOF_BUFFER_SIZE 10240
 
