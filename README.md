@@ -1,11 +1,11 @@
 redis-counter
 =============
 
+#Function
 redis-counter parse redis rdb file, count deleted keys, other keys and saved keys. Save key value pair into aof files.
 
-Key-value **format** saved in aof files and **hash** strategy for which file current key-value pair go.
-
-The **format** and **hash** strategy can be defined in:
+#Format and hash
+Key-value **format** saved in aof files and **hash** strategy for which file current key-value pair go can be **defined** in this handle in main.c:
     
 ```c
 
