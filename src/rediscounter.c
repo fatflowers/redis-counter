@@ -35,7 +35,7 @@ char * aof_filename = "output.aof";
 long long REDISCOUNTER_RDB_BLOCK = 10240;
 int dump_aof = -1;
 long _time_begin, _time_counter;
-int print_count = 0;
+unsigned int print_count = 0;
 
 /**
  * @brief show_state
@@ -44,12 +44,10 @@ int print_count = 0;
  */
 void show_state(char * msg){
     long now = clock();
-    fprintf(stdout, "now=%ld, time_used=%lfs, time_total=%lfs, msg=%s",
+    fprintf(stdout, "now=%ld, time_total=%lfs, msg=%s",
             now,
-            (double)(now - _time_counter) / CLOCKS_PER_SEC * 10,
-            (double)(now - _time_begin) / CLOCKS_PER_SEC * 10,
+            (double)(now - _time_begin) / CLOCKS_PER_SEC,
             msg);
-    _time_counter = now;
 }
 
 
@@ -482,7 +480,7 @@ err:
  */
 int rdb_load(char *filename, format_kv_handler format_handler){
     // init time recoders
-    _time_begin = _time_counter = clock();
+    _time_begin = clock();
     show_state("parse begin...\n");
 
     if(!filename){
