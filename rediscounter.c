@@ -30,7 +30,7 @@
 int aof_number = 1;
 char * aof_filename = "output.aof";
 long long REDISCOUNTER_RDB_BLOCK = 10240;
-int dump_aof = 1;
+int dump_aof = -1;
 long _time_begin, _time_counter;
 
 /**
