@@ -30,7 +30,7 @@
 int aof_number = 1;
 char * aof_filename = "output.aof";
 long long REDISCOUNTER_RDB_BLOCK = 10240;
-int dump_aof = -1;
+int dump_aof = 1;
 long _time_begin, _time_counter;
 
 /**
@@ -42,8 +42,8 @@ void show_state(char * msg){
     long now = clock();
     fprintf(stdout, "now=%ld, time_used=%lfs, time_total=%lfs, msg=%s",
             now,
-            (double)(now - _time_counter) / CLOCKS_PER_SEC,
-            (double)(now - _time_begin) / CLOCKS_PER_SEC,
+            (double)(now - _time_counter) / CLOCKS_PER_SEC * 10,
+            (double)(now - _time_begin) / CLOCKS_PER_SEC * 10,
             msg);
     _time_counter = now;
 }
