@@ -30,4 +30,4 @@ typedef char * format_kv_handler(void * key, int key_len, long value, void *hash
 
 
 
-<div id="ct1">词条1</div>
+<a name="ct1">词条1</a>
