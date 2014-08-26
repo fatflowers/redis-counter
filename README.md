@@ -1,6 +1,9 @@
 redis-counter
 =============
 
+##Introduce
+redis-counter works for a specified version of REDIS. It's used to analysis rdb files.
+
 ##Function
 redis-counter parse redis rdb file, count deleted keys, other keys and saved keys. Save key value pair into aof files.
 
