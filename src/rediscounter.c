@@ -390,7 +390,6 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
             show_state(state_buf);
         }
 
-        // time used...
         read_offset = 0;
         for(j = 0; j < key_count && read_offset < boundary; j++){
             // get a value
@@ -436,7 +435,7 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
             sprintf(buf, "\nblock_id=%d block_size=%lfM\n"
                     "key_count=%lld saved_key=%lld\n"
                     "deleted_key=%lld other_key=%lld\n"
-                    "%lf finished\n\n",
+                    "%lf%% finished\n\n",
                     i, REDISCOUNTER_RDB_BLOCK / 1024.0 / 1024.0,
                     key_count, saved_key,
                     ndeleted_key, nother_key,
@@ -444,6 +443,7 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
             show_state(buf);
         }
     }
+
 
     // save the data in buffer
     for(i = 0; i < aof_number; i++){
@@ -453,6 +453,11 @@ int rdb_load_dict(FILE *fp, rdb_state state, Aof * aof_set, format_kv_handler fo
         sdsfree((aof_set + i)->buffer);
         free((aof_set + i)->filename);
         fclose((aof_set + i)->fp);
+    }
+    //check if all the keys parsed
+    if(state.used != ndeleted_key + nother_key + saved_key){
+        fprintf(stderr, "parsed error, didn't read all the keys, still got:%lld\n",state.used - (ndeleted_key + nother_key + saved_key));
+        goto err;
     }
     // show all done info
     sprintf(buf, "all done: saved_key=%lld deleted_key=%lld other_key=%lld\n", saved_key, ndeleted_key, nother_key);
