@@ -1,5 +1,6 @@
 redis-counter
 =============
+<a href="#ct1">跳转到词条1</a>
 ##Introduce
 redis-counter works for a specified version of REDIS. It's used to analysis rdb files.
 
@@ -25,3 +26,8 @@ Key-value **format** saved in aof files and **hash** strategy for which file cur
 typedef char * format_kv_handler(void * key, int key_len, long value, void *hashed_key);
 
 ```
+
+
+
+
+<div id="ct1">词条1</div>
