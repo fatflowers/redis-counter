@@ -1,6 +1,5 @@
 redis-counter
 =============
-[XXXX](#jump)
 ##Introduce
 redis-counter works for a specified version of REDIS. It's used to analysis rdb files.
 
@@ -26,12 +25,3 @@ Key-value **format** saved in aof files and **hash** strategy for which file cur
 typedef char * format_kv_handler(void * key, int key_len, long value, void *hashed_key);
 
 ```
-
-
-
-
-
-
-
-
-<span id="jump">Hello World</span>
